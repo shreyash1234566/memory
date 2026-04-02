@@ -935,6 +935,9 @@
         <div id="settings" class="view">
             <div class="settings-card">
                 <h2 style="margin-bottom: 1.5rem">Platform Configuration</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.95rem">
+                    On Vercel, set <strong>SUPABASE_URL</strong>, <strong>SUPABASE_ANON_KEY</strong>, and optionally <strong>PEXELS_API_KEY</strong> in Project Settings. This app reads them from <code>/api/config</code> at runtime.
+                </p>
                 <div class="form-group">
                     <label class="form-label">Supabase URL</label>
                     <input type="text" id="sb-url" class="input-field" placeholder="https://your-project.supabase.co">
@@ -966,8 +969,9 @@
         class MasteryEngine {
             constructor() {
                 this.supabase = null;
-                this.pexelsKey = localStorage.getItem('mastery_pexels_key');
-                this.loadConfig();
+                this.pexelsKey = '';
+                this.configSource = 'local';
+                this.ready = this.loadConfig();
                 this.sessionCards = [];
                 this.currentIndex = 0;
                 this.timerInterval = null;
@@ -976,11 +980,36 @@
                 this.studyIndex = 0;
             }
 
-            loadConfig() {
-                const url = localStorage.getItem('mastery_sb_url');
-                const key = localStorage.getItem('mastery_sb_key');
-                if (url && key) {
-                    this.supabase = supabase.createClient(url, key);
+            async loadConfig() {
+                const localUrl = localStorage.getItem('mastery_sb_url');
+                const localKey = localStorage.getItem('mastery_sb_key');
+                const localPexelsKey = localStorage.getItem('mastery_pexels_key') || '';
+
+                try {
+                    const response = await fetch('/api/config', { cache: 'no-store' });
+                    if (response.ok) {
+                        const config = await response.json();
+                        const url = config.supabaseUrl || localUrl;
+                        const key = config.supabaseAnonKey || localKey;
+                        const pexelsKey = config.pexelsApiKey || localPexelsKey;
+
+                        this.configSource = config.source || 'vercel';
+                        this.pexelsKey = pexelsKey;
+
+                        if (url && key) {
+                            this.supabase = supabase.createClient(url, key);
+                        }
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Config endpoint unavailable, falling back to local settings.', error);
+                }
+
+                this.configSource = localUrl && localKey ? 'local' : 'unset';
+                this.pexelsKey = localPexelsKey;
+
+                if (localUrl && localKey) {
+                    this.supabase = supabase.createClient(localUrl, localKey);
                 }
             }
 
@@ -988,6 +1017,9 @@
                 localStorage.setItem('mastery_sb_url', url);
                 localStorage.setItem('mastery_sb_key', key);
                 localStorage.setItem('mastery_pexels_key', pexKey);
+                this.configSource = 'local';
+                this.pexelsKey = pexKey;
+                this.supabase = supabase.createClient(url, key);
                 location.reload();
             }
 
@@ -1292,7 +1324,8 @@
             document.getElementById('close-modal').addEventListener('click', closeCompletion);
         }
 
-        window.onload = () => {
+        window.onload = async () => {
+            await engine.ready;
             if (engine.supabase) renderDashboard();
             else switchView('settings');
             initEventListeners();
