@@ -966,6 +966,14 @@
     </div>
 
     <script>
+        function normalizeSupabaseUrl(rawUrl) {
+            const value = (rawUrl || '').trim();
+            if (!value) return '';
+
+            const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+            return withProtocol.replace(/\/+$/, '');
+        }
+
         class MasteryEngine {
             constructor() {
                 this.supabase = null;
@@ -989,7 +997,7 @@
                     const response = await fetch('/api/config', { cache: 'no-store' });
                     if (response.ok) {
                         const config = await response.json();
-                        const url = config.supabaseUrl || localUrl;
+                        const url = normalizeSupabaseUrl(config.supabaseUrl || localUrl);
                         const key = config.supabaseAnonKey || localKey;
                         const pexelsKey = config.pexelsApiKey || localPexelsKey;
 
@@ -1008,18 +1016,20 @@
                 this.configSource = localUrl && localKey ? 'local' : 'unset';
                 this.pexelsKey = localPexelsKey;
 
-                if (localUrl && localKey) {
-                    this.supabase = supabase.createClient(localUrl, localKey);
+                const normalizedLocalUrl = normalizeSupabaseUrl(localUrl);
+                if (normalizedLocalUrl && localKey) {
+                    this.supabase = supabase.createClient(normalizedLocalUrl, localKey);
                 }
             }
 
             saveConfig(url, key, pexKey) {
-                localStorage.setItem('mastery_sb_url', url);
+                const normalizedUrl = normalizeSupabaseUrl(url);
+                localStorage.setItem('mastery_sb_url', normalizedUrl);
                 localStorage.setItem('mastery_sb_key', key);
                 localStorage.setItem('mastery_pexels_key', pexKey);
                 this.configSource = 'local';
                 this.pexelsKey = pexKey;
-                this.supabase = supabase.createClient(url, key);
+                this.supabase = supabase.createClient(normalizedUrl, key);
                 location.reload();
             }
 
@@ -1302,7 +1312,7 @@
         }
 
         function saveSettings() {
-            const url = document.getElementById('sb-url').value;
+            const url = normalizeSupabaseUrl(document.getElementById('sb-url').value);
             const key = document.getElementById('sb-key').value;
             const pexKey = document.getElementById('pex-key').value;
             if (!url || !key) { alert('Please enter both Supabase URL and API Key'); return; }
